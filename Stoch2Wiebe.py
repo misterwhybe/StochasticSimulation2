@@ -7,9 +7,10 @@ import simpy
 RANDOM_SEED = 20
 NUM_servers = 2  # Number of parallel servers
 helpingTime = 5      # Minutes it takes to clean a car
-T_INTER = 3       # Create a customer every ~7 minutes
-SIM_TIME = 20     # Simulation time in minutes
+T_INTER = 10 // NUM_servers      # Create a customer every ~7 minutes
+SIM_TIME = 30     # Simulation time in minutes
 num_customers = 200
+waitingList = []
 
 
 class DES(object):
@@ -26,8 +27,8 @@ class DES(object):
         self.servingTime = servingTime
 
     def handleTime(self):
-        """The washing processes. It takes a server processes and tries
-        to clean it."""
+        """The handling processes. It takes a server processes and tries
+        to help it."""
         for i in range(1, num_customers +1):
             # helps for lambda
             helpingTime = random.expovariate(1 / 10)
@@ -36,21 +37,28 @@ class DES(object):
 
 
 def Customer(env, name, cw):
-    """The car process (each car has a ``name``) arrives at the carwash
-    (``cw``) and requests a cleaning machine.
+    """The customer process (each customer has a ``name``) arrives at the DES
+    (``cw``) and requests help.
 
-    It then starts the washing process, waits for it to finish and
+    It then starts the helping process, waits for it to finish and
     leaves to never come back ...
 
     """
     print('%s arrives at the server at %.2f.' % (name, env.now))
+    arrivalTime = env.now
     with cw.server.request() as request:
         yield request
 
         print('%s enters the server at %.2f.' % (name, env.now))
+        helpedTime = env.now
         yield env.process(cw.handleTime())
 
         print('%s leaves the server at %.2f.' % (name, env.now))
+        print(arrivalTime)
+        print(helpedTime)
+        waitingTime = (helpedTime - arrivalTime)
+        print(waitingTime)
+        waitingList.append(waitingTime)
 
 
 def setup(env, num_servers, washtime, t_inter):
@@ -61,7 +69,7 @@ def setup(env, num_servers, washtime, t_inter):
 
     # Create 4 initial cars
     for i in range(4):
-        env.process(Customer(env, 'Car %d' % i, des))
+        env.process(Customer(env, 'Customer %d' % i, des))
 
     # Create more cars while the simulation is running
     while True:
@@ -80,3 +88,9 @@ env.process(setup(env, NUM_servers, helpingTime, T_INTER))
 
 # Execute!
 env.run(until=SIM_TIME)
+
+sumWaitingTime = sum(waitingList)
+averageWaitingTime = sumWaitingTime/len(waitingList)
+print('Total waiting time:', sumWaitingTime)
+print('Length of waiting time', len(waitingList))
+print('Average waiting time = ', averageWaitingTime)
