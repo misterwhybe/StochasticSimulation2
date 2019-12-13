@@ -1,159 +1,107 @@
-import random
-import simpy
+import matplotlib.pyplot as plt
 import numpy as np
-import time
+from random import random, randint
+from scipy.spatial import distance
+from data import load_coordinates
+from time import time
+import os
 
-RANDOM_SEED = 42
-CUSTOMERS = 2500
-INTERVAL_COSTUMERS = 1.0
-SERVING_TIME = 0.9
-ITER = 300
-LESS_ITER = 100
-SERVING_TIMES = [0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97,
-                    0.98, 0.99, 0.999]
-
-
-def source_MMn(env, interval, server, serving_time, iterations, servers, 
-                diff, data):
-    """
-    Source generates customers randomly
-    """
-
-    for i in range(CUSTOMERS):
-        person = costumer_shortest_job(env, i, server, serving_time, iterations, servers, 
-                            diff, data)
-        env.process(person)
-        arrival_time = random.expovariate(1.0 / interval)
-        yield env.timeout(arrival_time)
+from tsp import TSP
+FILE1 = "TSP-Configurations/eil51.tsp.txt"
+ITER = 2000000
+# def inputs():
+#     start_temp, stop_temp = temps[-1], 1e-6
+#     factor_linear = start_temp / ITER
+    # tsp_linear = TSP(coords, temps[-1], stop_temp, "linear", factor_linear)
+    # tsp_linear.simulated_annealing()
 
 
-def costumer(env, name, server, serving_time, iterations, servers, diff, data):
-    """
-    Costumer arrives, is served and leaves.
-    """
+def histogram():
+    num_bins = 40
+    start_temp, stop_temp = temps[-1], 1e-6
+    bestDistanceListEX = []
+    bestDistanceListL = []
+    factor_linear = start_temp / ITER
+    factor_exp = np.exp(np.log(stop_temp / start_temp) / ITER)
+    for i in range(200):
+        tsp_linear = TSP(coords, temps[-1], stop_temp, "linear", factor_linear)
+        tsp_exp = TSP(coords, start_temp, stop_temp, "exponential", factor_exp)
+        tsp_linear.simulated_annealing()
+        tsp_exp.simulated_annealing()
+        print("Linear:", tsp_linear.best_distance)
+        print("Exponential:", tsp_exp.best_distance)
+        bestDistanceListL.append(round(tsp_linear.best_distance,2))
+        bestDistanceListEX.append(round(tsp_exp.best_distance,2))
+        print("iteration:", i)
+    print(bestDistanceListL)
+    print(bestDistanceListEX)
+    # plt.hist(bestDistanceListL, num_bins,facecolor='blue', alpha=0.5)
+    # plt.xlabel('Distance')
+    # plt.ylabel('Amount')
+    # plt.title('Best estimated distances for linear cooling schemes')
+    # plt.savefig("eil51/linear_cooling/histogram_linear.pdf", dpi=300)
+    # newbestDistanceListL = np.asarray(bestDistanceListL)
+    # np.save(f"eil51/LinearBestDistanceHist.npy", newbestDistanceListL)
 
-    arrive = env.now
+    # plt.show()
+    # plt.hist(bestDistanceListEX,num_bins, facecolor='blue', alpha=0.5)
+    # plt.xlabel('Distance')
+    # plt.ylabel('Amount')
+    # plt.title('Best estimated distances for exponential cooling schemes')
+    # plt.savefig("eil51/exp_cooling/histogram_exponential.pdf", dpi=300)
+    # newbestDistanceListEX = np.asarray(bestDistanceListEX)
+    # np.save(f"eil51/EXBestDistanceHist.npy", newbestDistanceListEX)
 
-    with server.request() as req:
-        yield req
-
-        # We got to the counter
-        wait = env.now - arrive
-        t = random.expovariate(1.0 / serving_time)
-        response = wait + t
-        yield env.timeout(t)
-        leave = env.now
-        data[diff, iterations, name, :] = np.array([arrive, wait, response,
-                                                        leave])
-def costumer_shortest_job(env, name, server, serving_time, iterations, servers, diff, data):
-    """
-    Costumer arrives, is served and leaves.
-    """
-
-    arrive = env.now
-    t = random.expovariate(1.0 / serving_time)
-
-    with server.request(priority=t) as req:
-        yield req
-
-        # We got to the counter
-        wait = env.now - arrive
-        
-        response = wait + t
-        yield env.timeout(t)
-        leave = env.now
-        data[diff, iterations, name, :] = np.array([arrive, wait, response,
-                                                        leave])
-def run_sim(iterations, servers, serving_time, interval, diff, data):
-    """
-    Performs one simulation for a given amount of servers 
-    in the facility.
-    """
-
-    # random.seed(RANDOM_SEED)
-    env = simpy.Environment()
-
-    # Start processes and run simulation
-    server = simpy.Resource(env, capacity=servers)
-
-    # add procces to environment
-    arrival_rate = interval / servers
-    env.process(source_MMn(env, arrival_rate, server, serving_time,
-                           iterations, servers, diff, data))
-
-    # run simulations
-    env.run()
-
-    # return data
-def run_sim_shortest_job(iterations, servers, serving_time, interval, diff, data):
-    """
-    Performs one simulation for a given amount of servers 
-    in the facility.
-    """
-
-    # random.seed(RANDOM_SEED)
-    env = simpy.Environment()
-
-    # Start processes and run simulation
-    server = simpy.PriorityResource(env, capacity=servers)
-
-    # add procces to environment
-    arrival_rate = interval / servers
-    env.process(source_MMn(env, arrival_rate, server, serving_time,
-                           iterations, servers, diff, data))
-
-    # run simulations
-    env.run()
-
-    # return data
-
-def sim_MMn(total_servers, serving_time, interval):
-
-    # Setup and start the simulation
-    print("DES")
-
-    diff_servers  = list(range(len(total_servers)))
-    data = np.zeros((len(total_servers), ITER, CUSTOMERS, 4))
-    for servers, diff in zip(total_servers, diff_servers):
-        for i in range(ITER):
-            run_sim_shortest_job(i, servers, serving_time, interval, diff, data)
-    return data
-
-def sim_diff_rho(total_servers, interval):
-
-    print("DES")
-    # serving_times = [0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 
-    #                     0.98, 0.99, 0.999]
-    data_rhos = np.zeros((len(SERVING_TIMES), len(total_servers), LESS_ITER, 
-                            CUSTOMERS, 4))
-    diff_rhos = list(range(len(SERVING_TIMES)))
-    diff_servers = list(range(len(total_servers)))
-
-    for serving_time, index_rho in zip(SERVING_TIMES, diff_rhos):
-        data = np.zeros((len(total_servers), LESS_ITER, CUSTOMERS, 4))
-
-        for servers, index_server in zip(total_servers, diff_servers):
-            for i in range(LESS_ITER):
-                run_sim_shortest_job(i, servers, serving_time, interval, index_server, data)
-
-        data_rhos[index_rho, :, :, :, :] = data
-    
-    return data_rhos
+    plt.show()
+    return bestDistanceListL, bestDistanceListEX
 
 
 if __name__ == "__main__":
+    coords = load_coordinates(FILE1)
+    path = "eil51/init_temp"
+    temps = []
+    with open(f"{path}/init_temps.txt", 'r') as f:
+        temps = f.read().splitlines()
+        temps = [float(temp) for temp in temps]
 
-    total_servers = [1, 2, 4]
-    # start = time.time()
-    # data = sim_MMn(total_servers, SERVING_TIME, INTERVAL_COSTUMERS)
-    # print("Python script ran in {:2.3} minutes."
-    #       .format((time.time() - start) / 60))
+    # start_temp, stop_temp = temps[-1], 1e-6
+    # factor_linear = start_temp / ITER
+    # tsp_linear = TSP(coords, temps[-1], stop_temp, "linear", factor_linear)
+    # np.save("eil51/coordinates.npy", tsp_linear.coords)
+    # np.save("eil51/distance_matrix.npy", tsp_linear.dist_mat)
+    start = time()
+    histogram()
+    # tsp_linear.simulated_annealing()
+    # tsp_linear.histogram()
+    print("Python scrip ran in {:2.3} minutes.".format((time()-start)/60))
 
-    # np.save("results/data_startup.npy", data)
-    # working?
+    # path = "eil51/linear_cooling"
+    # os.makedirs(path, exist_ok=True)
+    # dist_history = np.array(tsp_linear.distance_history)
+    # tour_history = np.array(tsp_linear.tour_history)
+    # np.save(f"{path}/distance_history_1mln.npy", dist_history)
+    # np.save(f"{path}/tour_history_1mln.npy", tour_history)
+    # tsp_linear.plot_learning(f"{path}/learning_plot.pdf")
 
-    start = time.time()
-    data_rhos = sim_diff_rho(total_servers, INTERVAL_COSTUMERS)
-    print("Python script ran in {:2.3} minutes."
-          .format((time.time() - start) / 60))
-    np.save("results/data_diff_rhos.npy", data_rhos)
+    # with open(f"{path}/best_solution_1mln.txt", 'w') as f:
+    #     f.write("Distance: " + str(tsp_linear.best_distance) + "\n")
+    #     f.write("\n".join([str(city) for city in tsp_linear.best_tour]))
+        # f.write("\n".join([str(city) for city in tsp_linear.best_tour]))
+
+    # factor_exp = np.exp(np.log(stop_temp / start_temp) / ITER)
+    # tsp_exp = TSP(coords, start_temp, stop_temp, "exponential", factor_exp)
+    # start = time()
+    # tsp_exp.simulated_annealing()
+    # print("Python scrip ran in {:2.3} minutes.".format((time()-start)/60))
+
+    # path ="eil51/exp_cooling"
+    # os.makedirs(path,  exist_ok=True)
+    # dist_history = np.array(tsp_exp.distance_history)
+    # tour_history = np.array(tsp_exp.tour_history)
+    # np.save(f"{path}/distance_history_1mln.npy", dist_history)
+    # np.save(f"{path}/tour_history_1mln.npy", tour_history)
+    # tsp_exp.plot_learning(f"{path}/learning_plot.pdf")
+
+    # with open(f"{path}/best_solution_1mln.txt", 'w') as f:
+    #     f.write("Distance: " + str(tsp_exp.best_distance) + "\n")
+    #     f.write("\n".join([str(city) for city in tsp_exp.best_tour]))
